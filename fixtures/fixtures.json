@@ -1,0 +1,41 @@
+{
+  "photo_a_vancouver.jpg": {
+    "gps": {
+      "lat": 49.2827,
+      "lng": -123.1207
+    },
+    "orientation": 1
+  },
+  "photo_b_paris.jpg": {
+    "gps": {
+      "lat": 48.8584,
+      "lng": 2.2945
+    },
+    "orientation": 1
+  },
+  "photo_c_tokyo.jpg": {
+    "gps": {
+      "lat": 35.6586,
+      "lng": 139.7454
+    },
+    "orientation": 1
+  },
+  "photo_d_sydney.jpg": {
+    "gps": {
+      "lat": -33.8568,
+      "lng": 151.2153
+    },
+    "orientation": 1
+  },
+  "photo_e_no_gps.jpg": {
+    "gps": null,
+    "orientation": 1
+  },
+  "photo_f_banff_rot.jpg": {
+    "gps": {
+      "lat": 51.1784,
+      "lng": -115.5708
+    },
+    "orientation": 6
+  }
+}

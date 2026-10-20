@@ -1,0 +1,63 @@
+/* findmygeo: design tokens. "Survey Sticker": field-sheet structure,
+   sticker-hard shadows, pastel teams. Components live in app.css. */
+
+:root {
+  --bg: #ffffff;
+  --ink: #0b0b0b;
+  --muted: #767676;
+  --rule: #e6e6e6;
+  --panel: #f6f6f4;
+  --well: #000000;           /* photo + map wells are always dark */
+  --accent: #ff4f00;
+  --on-accent: #ffffff;
+  --shadow: var(--ink);
+
+  --team-0: #A5D9DA; --team-1: #B5B0F2; --team-2: #FA6767; --team-3: #FACE05;
+  --team-4: #F0A8CB; --team-5: #7FC8A9; --team-6: #FFC01F; --team-7: #8EC3D9;
+  --on-team: #0b0b0b;        /* pastel stickers always take dark ink */
+
+  --font-display: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+  --font-body: 'Barlow', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --track-tight: 0.04em;
+  --track-label: 0.14em;
+
+  --border: 2px;
+  --border-heavy: 3px;
+  --hard: 4px 4px 0 var(--shadow);
+  --hard-sm: 3px 3px 0 var(--shadow);
+  --hard-press: 1px 1px 0 var(--shadow);
+
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 20px; --s5: 40px; --s6: 60px;
+  --gutter: 16px;
+  --maxw: 1180px;
+  --rail-w: 64px;
+
+  --fast: .15s;
+  --slap: cubic-bezier(.2, 1.6, .4, 1);
+
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --bg: #000000;
+  --ink: #f2f2f2;
+  --muted: #8a8a8a;
+  --rule: #262626;
+  --panel: #0f0f0f;
+  --shadow: #f2f2f2;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #000000;
+    --ink: #f2f2f2;
+    --muted: #8a8a8a;
+    --rule: #262626;
+    --panel: #0f0f0f;
+    --shadow: #f2f2f2;
+    color-scheme: dark;
+  }
+}
