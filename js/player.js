@@ -468,6 +468,11 @@ export function mountPlayer(root, rawCode) {
       h('div.stack', h('div.row', { style: { flexWrap: 'nowrap', gap: '14px' } }, sticker, h('div.stack', { style: { flex: '1', gap: '6px' } }, teamLine, bar)), h('div.row', switchBtn, h('span.spacer'), mates)),
       switcher,
       jobSlot,
+      h(
+        'div.callout',
+        h('div.label', 'Pick a photo you took'),
+        h('p.muted', { style: { marginTop: '4px' } }, "With location turned on, so the game knows where it is. Screenshots and saved pics usually don't have it, and you'll have to pin those by hand."),
+      ),
       dropzone,
       thumbs,
       h('hr.rule'),
@@ -698,7 +703,7 @@ export function mountPlayer(root, rawCode) {
     const header = roundHeader();
     const statuses = statusRow();
 
-    const photoSlot = h('div', { style: { height: 'clamp(140px, 26dvh, 240px)', flex: 'none' } });
+    const photoSlot = h('div', { style: { height: 'clamp(140px, 24dvh, 240px)', flex: 'none' } });
     function setPhoto(p) {
       if (p && p.index === idx) {
         const img = h('img', { src: p.url, alt: 'Round photo' });
@@ -709,15 +714,17 @@ export function mountPlayer(root, rawCode) {
     }
     setPhoto(roundPhoto);
 
-    const mapEl = h('div.map', { style: { position: 'absolute', inset: '0' } });
+    const mapEl = h('div.map', { style: { position: 'absolute', inset: '0', minHeight: '0' } });
     const mapSlot = h('div', { style: { position: 'relative', flex: '1', minHeight: '280px' } }, mapEl);
 
     const info = h('div.label');
+    const heads = h('div.callout.muted', { style: { fontSize: '12px', lineHeight: '1.3' } }, 'Heads up: anyone on your team can lock in from their phone. First lock counts, so agree before you tap.');
     const lockBtn = h('button.btn.accent.lg', { type: 'button', disabled: true, onclick: lock }, 'LOCK IT IN');
     const bar = h(
       'div.stack',
       { style: { position: 'sticky', bottom: '0', background: 'var(--bg)', borderTop: '1px solid var(--rule)', padding: '10px 0 max(10px, env(safe-area-inset-bottom))', gap: '8px', zIndex: '5' } },
       statuses.el,
+      heads,
       info,
       lockBtn,
     );
@@ -736,6 +743,7 @@ export function mountPlayer(root, rawCode) {
     function apply() {
       const locked = isLocked();
       const by = state.round && state.round.locked && state.round.locked[you.teamId];
+      show(heads, !locked);
       if (picker && locked !== appliedLocked) { picker.setLocked(locked); appliedLocked = locked; }
       if (locked) {
         setText(info, by ? `Locked by ${by}` : 'Locking…');
