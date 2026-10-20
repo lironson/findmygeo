@@ -13,15 +13,6 @@ No accounts, no backend. The TV holds the game and phones connect straight to it
 5. Reveal: the real spot appears, with dashed lines from each pin and the distance in km.
 6. Missing a pin costs 20,000 km. Lowest total after all rounds wins.
 
-## Hosting it yourself
-
-It's a static site, so GitHub Pages does the job.
-
-1. Fork or push the repo to GitHub.
-2. Go to **Settings → Pages**.
-3. Under **Build and deployment**, pick **Deploy from a branch**, branch `main`, folder `/ (root)`. Save.
-4. After a minute the site is live at `https://<your-user>.github.io/<repo>/`.
-
 ## Photos & GPS
 
 Most phones store the location in the photo. Some browsers strip it before the site ever sees the file:
