@@ -3,7 +3,7 @@
 
 import { haversineKm } from './geo.js';
 import {
-  VERSION, PHASE, ERR, PENALTY_KM, TIMER_OPTIONS, DEFAULT_TIMER,
+  VERSION, PHASE, ERR, PENALTY_KM, TIMER_MIN, TIMER_MAX, DEFAULT_TIMER,
   MIN_TEAMS, MAX_TEAMS, MIN_PHOTOS, MAX_PHOTOS, DEFAULT_TEAM_NAMES, TEAM_COLORS,
 } from './protocol.js';
 
@@ -29,7 +29,8 @@ function shuffle(arr, rng) {
 export function createGame({ code, teamCount = 4, photosPerTeam = 3, timerSec = DEFAULT_TIMER, teamNames = [] } = {}) {
   teamCount = clampInt(teamCount, MIN_TEAMS, MAX_TEAMS, 4);
   photosPerTeam = clampInt(photosPerTeam, MIN_PHOTOS, MAX_PHOTOS, 3);
-  timerSec = TIMER_OPTIONS.includes(Number(timerSec)) ? Number(timerSec) : DEFAULT_TIMER;
+  // 0 = off; anything else is rounded into [TIMER_MIN, TIMER_MAX]; junk/null -> default
+  timerSec = Number(timerSec) === 0 && timerSec !== null && timerSec !== '' ? 0 : clampInt(timerSec ?? NaN, TIMER_MIN, TIMER_MAX, DEFAULT_TIMER);
   const used = new Set();
   const teams = [];
   for (let i = 0; i < teamCount; i++) {

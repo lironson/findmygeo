@@ -10,10 +10,62 @@ export const CODE_LENGTH = 4;
 export const PENALTY_KM = 20000;               // no pin before the timer ran out
 export const TIMER_OPTIONS = [30, 60, 90, 0];  // seconds, 0 = no limit
 export const DEFAULT_TIMER = 60;
+export const TIMER_MIN = 10, TIMER_MAX = 600;  // custom timer bounds, seconds
+export const CUSTOM_TIMER_DEFAULT = 45;
 export const MIN_TEAMS = 2, MAX_TEAMS = 8;
 export const MIN_PHOTOS = 1, MAX_PHOTOS = 10;
 
 export const DEFAULT_TEAM_NAMES = ['MOOSE', 'LOONS', 'BEAVERS', 'BEARS', 'GEESE', 'OTTERS', 'LYNX', 'ORCAS'];
+// Random team-name pool (<= 12 chars: the name input's maxlength).
+export const ANIMAL_NAMES = [
+  'AARDVARKS', 'ALPACAS', 'ARMADILLOS', 'AXOLOTLS',
+  'BADGERS', 'BISON', 'BONOBOS', 'BUDGIES',
+  'CAPYBARAS', 'CHIPMUNKS', 'COYOTES', 'CROWS',
+  'DINGOS', 'DONKEYS', 'DUCKS',
+  'EMUS', 'ELKS', 'EAGLES',
+  'FERRETS', 'FLAMINGOS', 'FROGS',
+  'GECKOS', 'GOATS', 'GOPHERS',
+  'HERONS', 'HEDGEHOGS', 'HIPPOS',
+  'IBEXES', 'IGUANAS', 'IMPALAS',
+  'JACKALS', 'JAGUARS', 'JELLYFISH',
+  'KOALAS', 'KIWIS', 'KANGAROOS',
+  'LLAMAS', 'LEMURS', 'LOBSTERS',
+  'MOOSE', 'MEERKATS', 'MOLES',
+  'NARWHALS', 'NEWTS', 'NUTHATCHES',
+  'OCTOPUSES', 'OKAPIS', 'OSTRICHES',
+  'PUFFINS', 'PENGUINS', 'PORCUPINES',
+  'QUOKKAS', 'QUAILS',
+  'RACCOONS', 'RAVENS', 'REINDEER',
+  'SLOTHS', 'SEALS', 'STOATS',
+  'TAPIRS', 'TOUCANS', 'TORTOISES',
+  'URCHINS', 'UNICORNS',
+  'VULTURES', 'VOLES', 'VICUNAS',
+  'WALRUSES', 'WOMBATS', 'WOLVERINES',
+  'YAKS', 'YABBIES',
+  'ZEBRAS', 'ZEBUS',
+];
+
+// n distinct names, preferably with distinct first letters (stickers show the initial).
+// `avoid`: names already taken (never repeated; their initials are used last).
+export function pickTeamNames(n, rng = Math.random, avoid = []) {
+  const shuf = (a) => {
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+  };
+  const taken = new Set(avoid.map((a) => String(a).trim().toUpperCase()));
+  const byLetter = {};
+  for (const nm of ANIMAL_NAMES) if (!taken.has(nm)) (byLetter[nm[0]] ??= []).push(nm);
+  const seen = new Set([...taken].map((a) => a[0]));
+  const letters = Object.keys(byLetter);
+  const order = [...shuf(letters.filter((l) => !seen.has(l))), ...shuf(letters.filter((l) => seen.has(l)))];
+  const out = order.slice(0, n).map((l) => byLetter[l][Math.floor(rng() * byLetter[l].length)]);
+  if (out.length < n) {  // more teams than letters: repeat initials rather than names
+    const rest = shuf(ANIMAL_NAMES.filter((nm) => !taken.has(nm) && !out.includes(nm)));
+    out.push(...rest.slice(0, n - out.length));
+  }
+  return out;
+}
+
 export const TEAM_COLORS = ['#A5D9DA', '#B5B0F2', '#FA6767', '#FACE05', '#F0A8CB', '#7FC8A9', '#FFC01F', '#8EC3D9'];
 
 export const PHOTO_FULL_EDGE = 1600;  // long edge sent to host (TV)

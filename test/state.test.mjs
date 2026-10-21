@@ -37,11 +37,26 @@ test('createGame clamps config and names teams', () => {
   const s = G.createGame({ code: 'AAAA', teamCount: 99, photosPerTeam: 0, timerSec: 45, teamNames: ['  red  ', 'red'] });
   assert.equal(s.config.teamCount, 8);
   assert.equal(s.config.photosPerTeam, 1);
-  assert.equal(s.config.timerSec, 60);
+  assert.equal(s.config.timerSec, 45, 'custom seconds are kept');
   assert.equal(s.teams[0].name, 'RED');
   assert.equal(s.teams[1].name, 'RED 2');
   assert.equal(s.teams[2].name, 'BEAVERS');
   assert.equal(s.phase, PHASE.LOBBY);
+});
+
+test('createGame timer: 0 = off, custom rounded and clamped, junk -> default', () => {
+  const t = (timerSec) => G.createGame({ code: 'AAAA', timerSec }).config.timerSec;
+  assert.equal(t(45), 45);
+  assert.equal(t(30), 30);
+  assert.equal(t(5), 10);
+  assert.equal(t(9999), 600);
+  assert.equal(t(0), 0);
+  assert.equal(t(44.6), 45);
+  assert.equal(t('90'), 90);
+  assert.equal(t('abc'), 60);
+  assert.equal(t(null), 60);
+  assert.equal(t(undefined), 60);
+  assert.equal(t(NaN), 60);
 });
 
 test('uploads: cap per team, lobby only, owner-only delete, team switch withdraws', () => {

@@ -5,8 +5,8 @@
 import { h, wordmark, toast } from './dom.js';
 import { toggleTheme, currentTheme } from './theme.js';
 import {
-  MSG, ERR, PHASE, msg, TIMER_OPTIONS, MIN_TEAMS, MAX_TEAMS, MIN_PHOTOS, MAX_PHOTOS,
-  DEFAULT_TEAM_NAMES, TEAM_COLORS, DEFAULT_TIMER, PENALTY_KM,
+  MSG, ERR, PHASE, msg, TIMER_OPTIONS, TIMER_MIN, TIMER_MAX, CUSTOM_TIMER_DEFAULT, MIN_TEAMS, MAX_TEAMS, MIN_PHOTOS, MAX_PHOTOS,
+  pickTeamNames, TEAM_COLORS, DEFAULT_TIMER, PENALTY_KM,
 } from './protocol.js';
 import * as G from './state.js';
 import * as store from './store.js';
@@ -77,6 +77,7 @@ const ERR_TEXT = {
 };
 
 export function mountHost(root) {
+  const rolled = pickTeamNames(MAX_TEAMS);
   const app = {
     mode: 'loading',         // setup | loading | error | game
     loadingText: 'Warming up…',
@@ -92,7 +93,9 @@ export function mountHost(root) {
     photoLoads: new Map(),   // uploadId -> Promise
     pending: new Set(),      // in-flight putPhoto promises
     setup: {
-      teamCount: 4, photos: 3, timerSec: DEFAULT_TIMER, names: DEFAULT_TEAM_NAMES.slice(),
+      // rolled = random animal per slot (placeholder + fallback); names = input text; edited = host typed in it
+      teamCount: 4, photos: 3, timerSec: DEFAULT_TIMER, customSec: CUSTOM_TIMER_DEFAULT,
+      rolled, names: rolled.slice(), edited: Array(MAX_TEAMS).fill(false),
     },
     resuming: false,
   };
@@ -313,7 +316,7 @@ export function mountHost(root) {
         { label: 'Back', fn: goSetup },
       ], lastErr);
     }
-    const names = st.names.slice(0, st.teamCount).map((n, i) => (n || '').trim() || DEFAULT_TEAM_NAMES[i]);
+    const names = st.names.slice(0, st.teamCount).map((n, i) => (n || '').trim() || st.rolled[i]);
     app.room = room;
     app.s = G.createGame({
       code: room.code || makeRoomCode(), teamCount: st.teamCount, photosPerTeam: st.photos,
@@ -534,24 +537,58 @@ export function mountHost(root) {
     const grid = h('div', {
       style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 17em), 1fr))', gap: '16px 28px' },
     });
+    const isPreset = (sec) => TIMER_OPTIONS.includes(sec);
+    if (st.custom == null) st.custom = !isPreset(st.timerSec);
     const segBtns = TIMER_OPTIONS.map((sec) => h('button', {
       type: 'button',
-      onclick: () => { st.timerSec = sec; paintRules(); },
+      onclick: () => { st.custom = false; st.timerSec = sec; paintRules(); },
       dataset: { sec },
     }, sec ? `${sec}s` : 'OFF'));
+    const customBtn = h('button', {
+      type: 'button',
+      onclick: () => { st.custom = true; st.timerSec = st.customSec; paintRules(); customIn.select(); },
+      dataset: { sec: 'custom' },
+    }, 'CUSTOM');
+    const clampSec = (v) => Math.min(TIMER_MAX, Math.max(TIMER_MIN, Math.round(Number(v))));
+    const customPreview = h('span.muted.num');
+    const customIn = h('input.input', {
+      type: 'number', inputmode: 'numeric', min: TIMER_MIN, max: TIMER_MAX, step: 5, value: st.customSec,
+      'aria-label': 'Custom timer in seconds',
+      style: { ...MONO, width: '6em', flex: 'none', minHeight: '44px', textAlign: 'right' },
+      oninput: () => {
+        const v = Math.round(Number(customIn.value));
+        if (customIn.value !== '' && v >= TIMER_MIN && v <= TIMER_MAX) { st.customSec = v; st.timerSec = v; }
+        paintRules();
+      },
+      onchange: () => {
+        st.customSec = customIn.value === '' || !Number.isFinite(Number(customIn.value)) ? st.customSec : clampSec(customIn.value);
+        st.timerSec = st.customSec;
+        customIn.value = st.customSec;
+        paintRules();
+      },
+    });
+    const customRow = h('div.row', { style: { gap: '10px' } }, customIn, h('span.label', 's'), customPreview);
 
     function paintTeams() {
       grid.replaceChildren(...Array.from({ length: st.teamCount }, (_, i) => {
-        const sw = h('span.sticker.lg', { style: { '--team': TEAM_COLORS[i] } }, (st.names[i] || DEFAULT_TEAM_NAMES[i])[0] || '?');
+        const initial = () => ((st.names[i] || '').trim()[0] || st.rolled[i][0]).toUpperCase();
+        const sw = h('span.sticker.lg', { style: { '--team': TEAM_COLORS[i] } }, initial());
         const input = h('input.input', {
-          type: 'text', value: st.names[i], maxlength: 12, placeholder: DEFAULT_TEAM_NAMES[i],
+          type: 'text', value: st.names[i], maxlength: 12, placeholder: st.rolled[i],
           autocomplete: 'off', spellcheck: false,
           'aria-label': `Team ${i + 1} name`,
           style: { textTransform: 'uppercase', flex: '1', minWidth: '0' },
-          oninput: () => { st.names[i] = input.value; sw.textContent = (input.value.trim()[0] || DEFAULT_TEAM_NAMES[i][0]).toUpperCase(); },
+          oninput: () => { st.names[i] = input.value; st.edited[i] = !!input.value.trim(); sw.textContent = initial(); },
         });
         return h('label.row', { style: { flexWrap: 'nowrap', gap: '14px' } }, sw, input);
       }));
+    }
+    // re-roll every slot the host hasn't typed into; never repeat the typed names (or, if possible, their initials)
+    function shuffleNames() {
+      const free = st.edited.map((e, i) => (e ? -1 : i)).filter((i) => i >= 0);
+      const keep = st.edited.map((e, i) => (e ? (st.names[i].trim() || st.rolled[i]) : null)).filter(Boolean);
+      pickTeamNames(free.length, Math.random, keep).forEach((nm, k) => { st.rolled[free[k]] = nm; st.names[free[k]] = nm; });
+      paintTeams();
     }
     function paintRules() {
       teamVal.textContent = st.teamCount;
@@ -561,7 +598,10 @@ export function mountHost(root) {
       photoDec.disabled = st.photos <= MIN_PHOTOS;
       photoInc.disabled = st.photos >= MAX_PHOTOS;
       roundsOut.textContent = st.teamCount * st.photos;
-      segBtns.forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.sec) === st.timerSec)));
+      segBtns.forEach((b) => b.setAttribute('aria-pressed', String(!st.custom && Number(b.dataset.sec) === st.timerSec)));
+      customBtn.setAttribute('aria-pressed', String(st.custom));
+      customRow.hidden = !st.custom;
+      customPreview.textContent = st.timerSec ? `= ${mmss(st.timerSec * 1000)}` : '';
     }
     teamDec.onclick = () => { st.teamCount--; paintTeams(); paintRules(); };
     teamInc.onclick = () => { st.teamCount++; paintTeams(); paintRules(); };
@@ -574,9 +614,13 @@ export function mountHost(root) {
       h('div.stack.lg',
         h('div.stack', { style: { gap: '8px' } }, h('div.label', 'Teams'), h('div.stepper', teamDec, teamVal, teamInc)),
         h('div.stack', { style: { gap: '8px' } }, h('div.label', 'Photos per team'), h('div.stepper', photoDec, photoVal, photoInc)),
-        h('div.stack', { style: { gap: '8px' } }, h('div.label', 'Round timer'), h('div.seg', segBtns)),
+        h('div.stack', { style: { gap: '8px' } }, h('div.label', 'Round timer'), h('div.seg', segBtns, customBtn), customRow),
         h('div.muted', roundsOut, ' rounds. Everyone guesses all but their own team\'s photos.')),
-      h('div.stack', h('div.label', 'Team names (tap to rename)'), grid)));
+      h('div.stack',
+        h('div.row', { style: { justifyContent: 'space-between' } },
+          h('div.label', 'Team names (tap to rename)'),
+          h('button.text-btn', { type: 'button', onclick: shuffleNames }, 'SHUFFLE NAMES')),
+        grid)));
 
     parts.push(h('div.row', { style: { gap: '28px', paddingTop: '8px' } },
       h('button.btn.accent.lg', { type: 'button', onclick: startNew }, 'OPEN THE ROOM'),

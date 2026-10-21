@@ -18,12 +18,13 @@
 //   E2E_VERBOSE=1 echo every console warning/error from every page
 //
 // Exits 0 when every assertion passes, 1 otherwise. Screenshots (light + dark for every step) land in E2E_SHOTS.
-// The game uses a 30 s timer and one round is left to expire on purpose, so a run takes about two minutes.
+// The game uses a 30 s custom timer and one round is left to expire on purpose, so a run takes about two minutes.
 
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { ANIMAL_NAMES, DEFAULT_TEAM_NAMES } from '../js/protocol.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const FIX = path.join(ROOT, 'fixtures');
@@ -170,11 +171,45 @@ try {
   // ---------------------------------------------------------------- host setup
   await host.goto(`${BASE}/?${PEER}`);
   await host.getByRole('button', { name: /open the room/i }).waitFor();
-  // 3 teams, 1 photo, 30s
+  // random animal names: initial placeholders come from ANIMAL_NAMES, one initial per team
+  const rolled = await host.locator('input[aria-label^="Team "]').evaluateAll((els) => els.map((e) => e.placeholder));
+  const stickers = await host.locator('.sticker.lg').allTextContents();
+  check('setup rolls random animal team names', rolled.length === 4 && rolled.every((n) => ANIMAL_NAMES.includes(n)) && rolled.join() !== DEFAULT_TEAM_NAMES.slice(0, 4).join(), rolled.join());
+  check('setup stickers show distinct initials', new Set(stickers).size === 4 && stickers.join() === rolled.map((n) => n[0]).join(), stickers.join(''));
+  const before = await host.locator('input[aria-label="Team 1 name"]').inputValue();
+  await host.getByRole('button', { name: /shuffle names/i }).click();
+  const after = await host.locator('input[aria-label^="Team "]').evaluateAll((els) => els.map((e) => e.value));
+  check('SHUFFLE NAMES re-rolls the untouched names', after.length === 4 && new Set(after).size === 4 && after.every((n) => ANIMAL_NAMES.includes(n)), `${before} -> ${after.join()}`);
+  await shoot(host, 'host-setup-random');
+  // the game below expects MOOSE / LOONS / BEAVERS: type them in (typed names survive a shuffle)
+  for (const [i, nm] of TEAMS.entries()) {
+    const inp = host.locator(`input[aria-label="Team ${i + 1} name"]`);
+    await inp.clear();
+    await inp.fill(nm);
+  }
+  await host.getByRole('button', { name: /shuffle names/i }).click();
+  const typed = await host.locator('input[aria-label^="Team "]').evaluateAll((els) => els.slice(0, 3).map((e) => e.value));
+  check('SHUFFLE NAMES leaves typed names alone', typed.join() === TEAMS.join(), typed.join());
+  // 3 teams, 1 photo, 30s via CUSTOM
   await host.getByLabel('Fewer teams').click();
   await host.getByLabel('Fewer photos').click();
   await host.getByLabel('Fewer photos').click();
-  await host.locator('.seg button[data-sec="30"]').click();
+  const customField = host.locator('input[aria-label="Custom timer in seconds"]');
+  check('custom timer field is hidden for presets', !(await customField.isVisible()));
+  await host.locator('.seg button[data-sec="custom"]').click();
+  check('custom timer field shows after clicking CUSTOM', await customField.isVisible());
+  check('CUSTOM is pressed and presets are not', (await host.locator('.seg button[aria-pressed="true"]').allTextContents()).join() === 'CUSTOM');
+  await customField.fill('5');
+  await customField.blur();
+  check('custom timer clamps up to 10 on blur', (await customField.inputValue()) === '10');
+  await customField.fill('30');
+  await customField.blur();
+  check('custom timer previews as 0:30', /=\s*0:30/.test(await host.locator('.seg').locator('xpath=..').textContent()));
+  await shoot(host, 'host-setup-custom');
+  await host.locator('.seg button[data-sec="60"]').click();
+  check('picking a preset hides the custom field', !(await customField.isVisible()));
+  await host.locator('.seg button[data-sec="custom"]').click();
+  check('CUSTOM remembers the last custom value', (await customField.inputValue()) === '30');
   await shoot(host, 'host-setup');
   await host.getByRole('button', { name: /open the room/i }).click();
 
@@ -266,6 +301,10 @@ try {
     const sitter = sitTag.replace(/ sits this one out/i, '').trim();
     check(`${R}: host shows photo + "${sitter} sits this one out"`, TEAMS.includes(sitter), sitTag);
     check(`${R}: host timer visible`, /^\d:\d\d$/.test((await host.locator('.timer').textContent()).trim()));
+    if (r === 0) {
+      const t0 = (await host.locator('.timer').textContent()).trim();
+      check('R1: custom 30s timer starts at or below 0:30', t0 <= '0:30' && t0 >= '0:20', t0);
+    }
 
     const mode = {};
     for (const n of NAMES) mode[n] = await phoneMode(ph[n]);
