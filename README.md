@@ -1,12 +1,12 @@
 # findmygeo
 
-Snap a photo, stump your friends. A party game of pins and kilometres, GeoGuessr-style, played off a TV and everyone's phones.
+Your photos. Their pins. The party game where your camera roll is the map: upload a few shots, then everyone races to pin them. Played off a TV and everyone's phones.
 
 No accounts, no backend. The TV holds the game and phones connect straight to it over WebRTC.
 
 ## How to play
 
-1. Open the site on the TV or laptop, pick the number of teams (2–8), photos per team (1–10) and a guess timer (30s, 60s, 90s, off, or a custom time). Teams get random animal names, which you can edit or shuffle. Open the room.
+1. Open the site on the TV or laptop, pick the number of teams (2–8), photos per team (1–10) and a guess timer (30s, 60s, 90s, or a custom time). Teams get random animal names, which you can edit or shuffle. Open the room.
 2. Players scan the QR code on screen (or open `?join=CODE`), type a name and pick a team.
 3. Each player uploads photos. Every team has to upload the same number.
 4. Each round, one photo goes up on the TV. The team that took it sits out. Every other team drops a pin on the map from their phone and locks it in.

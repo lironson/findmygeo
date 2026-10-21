@@ -8,7 +8,7 @@ export const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ'; // no I, L, O
 export const CODE_LENGTH = 4;
 
 export const PENALTY_KM = 20000;               // no pin before the timer ran out
-export const TIMER_OPTIONS = [30, 60, 90, 0];  // seconds, 0 = no limit
+export const TIMER_OPTIONS = [30, 60, 90];  // seconds; CUSTOM covers anything else
 export const DEFAULT_TIMER = 60;
 export const TIMER_MIN = 10, TIMER_MAX = 600;  // custom timer bounds, seconds
 export const CUSTOM_TIMER_DEFAULT = 45;

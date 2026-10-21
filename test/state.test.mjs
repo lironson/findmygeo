@@ -44,16 +44,17 @@ test('createGame clamps config and names teams', () => {
   assert.equal(s.phase, PHASE.LOBBY);
 });
 
-test('createGame timer: 0 = off, custom rounded and clamped, junk -> default', () => {
+test('createGame timer: custom rounded and clamped, 0 clamps to min, junk -> default', () => {
   const t = (timerSec) => G.createGame({ code: 'AAAA', timerSec }).config.timerSec;
   assert.equal(t(45), 45);
   assert.equal(t(30), 30);
   assert.equal(t(5), 10);
   assert.equal(t(9999), 600);
-  assert.equal(t(0), 0);
+  assert.equal(t(0), 10);
   assert.equal(t(44.6), 45);
   assert.equal(t('90'), 90);
   assert.equal(t('abc'), 60);
+  assert.equal(t(''), 60);
   assert.equal(t(null), 60);
   assert.equal(t(undefined), 60);
   assert.equal(t(NaN), 60);
@@ -164,7 +165,7 @@ test('startGame builds order, no repeats, and every team guesses (T-1)*R rounds'
   }
 });
 
-test('timer: deadline set from timerSec, null when off; remainingMs in toPublic', () => {
+test('timer: deadline set from timerSec, null when timerSec is 0 (old saves); remainingMs in toPublic', () => {
   const s = lobby({ T: 2, R: 1, timerSec: 30 });
   G.startGame(s, { now: 10_000, rng: seeded(1) });
   assert.equal(s.deadline, 40_000);
@@ -172,7 +173,9 @@ test('timer: deadline set from timerSec, null when off; remainingMs in toPublic'
   assert.equal(G.toPublic(s, { now: 99_000 }).round.remainingMs, 0);
   G.restartTimer(s, { now: 50_000 });
   assert.equal(s.deadline, 80_000);
-  const off = lobby({ T: 2, R: 1, timerSec: 0 });
+  // createGame no longer accepts 0 (it clamps to TIMER_MIN), but games saved before the OFF option was removed may still carry it
+  const off = lobby({ T: 2, R: 1 });
+  off.config.timerSec = 0;
   G.startGame(off, { now: 10_000, rng: seeded(1) });
   assert.equal(off.deadline, null);
   assert.equal(G.toPublic(off, { now: 20_000 }).round.remainingMs, null);

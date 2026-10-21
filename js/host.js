@@ -509,7 +509,8 @@ export function mountHost(root) {
     bigMark.style.fontSize = '1em';
     parts.push(h('div.stack', { style: { paddingTop: '2vh' } },
       h('h1.display', { style: { fontSize: 'clamp(72px, 10vw, 220px)', margin: 0 } }, bigMark),
-      h('div.h2.muted', 'Snap a photo. Stump your friends.')));
+      h('div.h2.muted', 'Your photos. Their pins.'),
+      h('p.muted', { style: { maxWidth: '46ch', marginTop: '8px' } }, 'Your camera roll is the map. Upload a few shots from your phone, then everyone races to pin them on a map. Fewest km wins.')));
 
     // resume offer
     if (app.saved) {
@@ -543,7 +544,7 @@ export function mountHost(root) {
       type: 'button',
       onclick: () => { st.custom = false; st.timerSec = sec; paintRules(); },
       dataset: { sec },
-    }, sec ? `${sec}s` : 'OFF'));
+    }, `${sec}s`));
     const customBtn = h('button', {
       type: 'button',
       onclick: () => { st.custom = true; st.timerSec = st.customSec; paintRules(); customIn.select(); },

@@ -190,6 +190,13 @@ try {
   await host.getByRole('button', { name: /shuffle names/i }).click();
   const typed = await host.locator('input[aria-label^="Team "]').evaluateAll((els) => els.slice(0, 3).map((e) => e.value));
   check('SHUFFLE NAMES leaves typed names alone', typed.join() === TEAMS.join(), typed.join());
+  // round timer: 30s / 60s / 90s / CUSTOM, no OFF
+  const segTexts = await host.locator('.seg button').allTextContents();
+  check('round timer has 4 options and none is OFF', segTexts.length === 4 && !segTexts.some((t) => /off/i.test(t)), segTexts.join(' | '));
+  // tagline + brief (innerText, so CSS uppercasing is applied the way a viewer sees it)
+  const setupPage = (await host.locator('body').innerText()).toLowerCase();
+  check('setup shows the tagline', setupPage.includes('your photos. their pins.'));
+  check('setup shows the brief', setupPage.includes('camera roll is the map'));
   // 3 teams, 1 photo, 30s via CUSTOM
   await host.getByLabel('Fewer teams').click();
   await host.getByLabel('Fewer photos').click();

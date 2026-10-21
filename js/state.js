@@ -29,8 +29,8 @@ function shuffle(arr, rng) {
 export function createGame({ code, teamCount = 4, photosPerTeam = 3, timerSec = DEFAULT_TIMER, teamNames = [] } = {}) {
   teamCount = clampInt(teamCount, MIN_TEAMS, MAX_TEAMS, 4);
   photosPerTeam = clampInt(photosPerTeam, MIN_PHOTOS, MAX_PHOTOS, 3);
-  // 0 = off; anything else is rounded into [TIMER_MIN, TIMER_MAX]; junk/null -> default
-  timerSec = Number(timerSec) === 0 && timerSec !== null && timerSec !== '' ? 0 : clampInt(timerSec ?? NaN, TIMER_MIN, TIMER_MAX, DEFAULT_TIMER);
+  // rounded into [TIMER_MIN, TIMER_MAX]; junk, '' and null -> default (Number('') is 0, which would clamp to TIMER_MIN)
+  timerSec = clampInt(timerSec == null || timerSec === '' ? NaN : timerSec, TIMER_MIN, TIMER_MAX, DEFAULT_TIMER);
   const used = new Set();
   const teams = [];
   for (let i = 0; i < teamCount; i++) {
