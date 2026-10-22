@@ -508,7 +508,7 @@ export function mountHost(root) {
     const bigMark = wordmark();
     bigMark.style.fontSize = '1em';
     parts.push(h('div.stack', { style: { paddingTop: '2vh' } },
-      h('h1.display', { style: { fontSize: 'clamp(72px, 10vw, 220px)', margin: 0 } }, bigMark),
+      h('h1.display', { style: { fontSize: 'calc(44px * var(--k, 1))', margin: 0 } }, bigMark),
       h('div.h2.muted', 'Your photos. Their pins.'),
       h('p.muted', { style: { maxWidth: '46ch', marginTop: '8px' } }, 'Your camera roll is the map. Upload a few shots from your phone, then everyone races to pin them on a map. Fewest km wins.')));
 
