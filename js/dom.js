@@ -55,6 +55,6 @@ export function toast(text, { ms = 2600 } = {}) {
   toastTimer = setTimeout(() => el.classList.remove('show'), ms);
 }
 
-export const wordmark = () => h('span.wordmark', 'FINDMYGEO', h('span.dot', '.'));
+export const wordmark = () => h('span.wordmark', 'FINDMYGUESSR', h('span.dot', '.'));
 
 export const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;

@@ -1,4 +1,4 @@
-# findmygeo
+# findmyguessr
 
 Your photos. Their pins. The party game where your camera roll is the map: upload a few shots, then everyone races to pin them. Played off a TV and everyone's phones.
 

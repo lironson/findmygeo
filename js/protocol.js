@@ -3,7 +3,7 @@
 // DataConnection (binary serialization, so ArrayBuffers travel as-is).
 
 export const VERSION = 1;
-export const PEER_PREFIX = 'findmygeo-';       // host peer id = PEER_PREFIX + CODE
+export const PEER_PREFIX = 'findmyguessr-';       // host peer id = PEER_PREFIX + CODE
 export const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ'; // no I, L, O
 export const CODE_LENGTH = 4;
 

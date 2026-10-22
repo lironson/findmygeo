@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate test photos for findmygeo.
+"""Generate test photos for findmyguessr.
 
 Writes six 1200x900 JPEGs next to this script plus fixtures.json describing
 each file's expected GPS (or null) and EXIF orientation.

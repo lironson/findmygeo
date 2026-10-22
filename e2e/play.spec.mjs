@@ -1,4 +1,4 @@
-// End-to-end: plays a full findmygeo game in real Chromium (1 host TV + 4 phones over WebRTC).
+// End-to-end: plays a full findmyguessr game in real Chromium (1 host TV + 4 phones over WebRTC).
 //
 // HOW TO RUN
 //   1. Static server for the project root:      python3 -m http.server 8123         (from the repo root)
@@ -121,7 +121,7 @@ function haversine(a, b) {
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
 }
 const savedGame = (page) => page.evaluate(() => new Promise((res, rej) => {
-  const r = indexedDB.open('findmygeo');
+  const r = indexedDB.open('findmyguessr');
   r.onerror = () => rej(r.error);
   r.onsuccess = () => {
     const g = r.result.transaction('game').objectStore('game').get('current');

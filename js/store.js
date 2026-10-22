@@ -1,7 +1,7 @@
 // IndexedDB persistence for the host: the game state (one record) and the photo bytes (per upload id).
 // If IndexedDB is unavailable (private mode, etc.) everything falls back to memory so the game still runs.
 
-const DB_NAME = 'findmygeo';
+const DB_NAME = 'findmyguessr';
 const DB_VERSION = 1;
 const GAME = 'game', PHOTOS = 'photos', GAME_KEY = 'current';
 
