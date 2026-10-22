@@ -91,6 +91,7 @@ export const MSG = Object.freeze({
   // host -> player
   STATE: 'state',                 // { state: PublicState, you: You }
   ROUND_PHOTO: 'round_photo',     // { roundIndex, image: ArrayBuffer }  (800px jpeg, guessing teams only)
+  RECAP_PHOTO: 'recap_photo',     // { roundIndex, image: ArrayBuffer }  (800px jpeg, every round, sent to everyone in FINAL)
   ERROR: 'error',                 // { code: ERR.X, message }
 
   // either way

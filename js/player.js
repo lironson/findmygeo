@@ -6,7 +6,7 @@ import { h, mount, clear, toast, wordmark } from './dom.js';
 import { MSG, ERR, PHASE, CODE_ALPHABET, CODE_LENGTH, msg } from './protocol.js';
 import { joinRoom } from './net.js';
 import { processPhoto } from './photo.js';
-import { createPicker, createMap, renderReveal } from './map.js';
+import { createPicker, createMap, renderReveal, renderRecap } from './map.js';
 import { formatKm } from './geo.js';
 
 const LS_NAME = 'fmg-name';
@@ -104,9 +104,10 @@ export function mountPlayer(root, rawCode) {
   let you = null;
   let roundPhoto = null;          // { index, url }
   const previews = new Map();     // uploadId -> object URL (my own uploads)
+  const recapUrls = new Map();    // roundIndex -> object URL (end-of-game recap photos)
   let fullOverlay = null;
 
-  let cur = null;                 // { key, el, update, mounted, destroy, onError, onPhoto }
+  let cur = null;                 // { key, el, update, mounted, destroy, onError, onPhoto, onRecapPhoto }
   let curKey = null;
 
   // --- shell ---------------------------------------------------------------------------------
@@ -169,6 +170,8 @@ export function mountPlayer(root, rawCode) {
         if (you && you.teamId) { if (you.teamId !== localTeam) rememberTeam(you.teamId); }
         if (you && you.name && !name) { name = you.name; lsSet(LS_NAME, name); }
         if (state.phase !== PHASE.ROUND && state.phase !== PHASE.REVEAL) dropRoundPhoto();
+        // Recap photos may land just before the FINAL state, so REVEAL keeps them too.
+        if (state.phase !== PHASE.FINAL && state.phase !== PHASE.REVEAL) dropRecapPhotos();
         if (state.phase !== PHASE.LOBBY) dropPreviews();
         render();
         break;
@@ -178,6 +181,15 @@ export function mountPlayer(root, rawCode) {
         if (roundPhoto) URL.revokeObjectURL(roundPhoto.url);
         roundPhoto = { index: m.roundIndex, url };
         if (cur && cur.onPhoto) cur.onPhoto(roundPhoto);
+        break;
+      }
+      case MSG.RECAP_PHOTO: {
+        if (m.image == null || typeof m.roundIndex !== 'number') break;
+        const url = URL.createObjectURL(new Blob([m.image], { type: 'image/jpeg' }));
+        const old = recapUrls.get(m.roundIndex);
+        recapUrls.set(m.roundIndex, url);
+        if (cur && cur.onRecapPhoto) cur.onRecapPhoto(m.roundIndex, url);
+        if (old) URL.revokeObjectURL(old);
         break;
       }
       case MSG.ERROR:
@@ -190,6 +202,10 @@ export function mountPlayer(root, rawCode) {
 
   function dropRoundPhoto() {
     if (roundPhoto) { URL.revokeObjectURL(roundPhoto.url); roundPhoto = null; }
+  }
+  function dropRecapPhotos() {
+    for (const url of recapUrls.values()) URL.revokeObjectURL(url);
+    recapUrls.clear();
   }
   function dropPreviews() {
     for (const url of previews.values()) URL.revokeObjectURL(url);
@@ -928,7 +944,143 @@ export function mountPlayer(root, rawCode) {
     });
     const winnerTeam = scores.length ? teamById(scores[0].teamId) : null;
 
+    // --- recap explore map ---
+    const history = (state.history || []).slice().sort((a, b) => a.roundIndex - b.roundIndex);
+    const histBy = new Map(history.map((r) => [r.roundIndex, r]));
+    let recap = null;
+    let map = null;
+    let destroyed = false;
+    let selected = null;            // roundIndex or null (= all)
+
+    const chipRow = h('div.recap-chips', { role: 'group', 'aria-label': 'Rounds' });
+    const chips = new Map();        // roundIndex | 'all' -> button
+    const makeChip = (key, label, onclick) => {
+      const b = h('button', { type: 'button', 'aria-pressed': 'false', onclick }, label);
+      chips.set(key, b);
+      chipRow.append(b);
+    };
+    makeChip('all', 'ALL', () => {
+      setSelected(null);
+      if (recap) recap.showAll();
+    });
+    // renderRecap's select()/onSelect() use the position in `rounds` (== position in `history`),
+    // while chips and the card are keyed by roundIndex.
+    history.forEach((r, pos) => {
+      makeChip(r.roundIndex, `R${r.roundIndex + 1}`, () => {
+        setSelected(r.roundIndex);
+        if (recap) recap.select(pos);
+      });
+    });
+
+    const mapEl = h('div.map', { style: { position: 'absolute', inset: '0', minHeight: '0' } });
+    const mapSlot = h('div.recap-map', { style: { position: 'relative', height: '55dvh', minHeight: '280px' } }, mapEl);
+
+    const cardEl = h('div.recap-card', { 'aria-live': 'polite' });
+    let cardKey = '__none__';       // which round the card currently shows
+    let photoSlot = null;
+
+    function paintPhoto() {
+      if (!photoSlot || selected == null) return;
+      const url = recapUrls.get(selected);
+      if (url) {
+        mount(photoSlot, h('div.photo-well', { style: { height: '100%', minHeight: '0', border: '0', cursor: 'zoom-in' }, role: 'button', 'aria-label': 'View photo fullscreen', onclick: () => openFull(url) }, h('img', { src: url, alt: `Round ${selected + 1} photo` })));
+      } else {
+        mount(photoSlot, h('div.recap-hint', { style: { height: '100%', minHeight: '0' } }, 'Photo on its way…'));
+      }
+    }
+
+    function paintCard() {
+      if (cardKey === selected) return;
+      cardKey = selected;
+      photoSlot = null;
+      const r = selected == null ? null : histBy.get(selected);
+      if (!r) {
+        mount(cardEl, h('div.recap-hint', 'Tap a pin or a round to replay it.'));
+        return;
+      }
+      photoSlot = h('div', { style: { height: 'clamp(160px, 28dvh, 260px)', flex: 'none', borderBottom: '1px solid var(--rule)' } });
+      const gs = r.guesses
+        .slice()
+        .sort((a, b) => (a.penalty ? 1 : 0) - (b.penalty ? 1 : 0) || a.km - b.km);
+      const firstOk = gs.findIndex((g) => !g.penalty);
+      const grows = gs.map((g, i) => {
+        const t = teamById(g.teamId);
+        return h(
+          'tr' + (i === firstOk ? '.winner' : ''),
+          h('td', swatch(t ? t.color : '#ccc'), teamName(g.teamId), g.teamId === myId ? [' ', h('span.tag', 'You')] : null),
+          h('td.num', g.penalty ? 'no pin' : formatKm(g.km)),
+        );
+      });
+      mount(
+        cardEl,
+        photoSlot,
+        h(
+          'div.recap-body',
+          h('span.label', `Round ${selected + 1} of ${history.length}`),
+          h('div.muted', `Photo by ${r.uploaderName} (${teamName(r.uploaderTeamId)})`),
+          gs.length
+            ? h('table.board', h('thead', h('tr', h('th', 'Team'), h('th.num', 'km'))), h('tbody', grows))
+            : h('div.muted', 'Nobody guessed this one.'),
+        ),
+      );
+      paintPhoto();
+    }
+
+    function setSelected(i) {
+      selected = i != null && histBy.has(i) ? i : null;
+      for (const [k, b] of chips) {
+        const on = k === 'all' ? selected == null : k === selected;
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        if (on && chipRow.scrollTo) {
+          const left = b.offsetLeft - (chipRow.clientWidth - b.offsetWidth) / 2;
+          try { chipRow.scrollTo({ left: Math.max(0, left), behavior: 'smooth' }); } catch (e) {}
+        }
+      }
+      paintCard();
+    }
+    setSelected(null);
+
+    const recapSection = history.length
+      ? h(
+          'div.recap.stack',
+          h('span.label', 'The map'),
+          h('div.muted', 'Tap a pin to replay a round.'),
+          chipRow,
+          mapSlot,
+          cardEl,
+        )
+      : h('div.label.center', 'Look up. The TV has the victory lap.');
+
     return {
+      onRecapPhoto(idx) { if (idx === selected) paintPhoto(); },
+      mounted() {
+        if (!history.length) return;
+        requestAnimationFrame(() => {
+          if (destroyed) return;
+          try {
+            map = createMap(mapEl);
+            const rounds = history.map((r) => ({
+              index: r.roundIndex,
+              target: r.target,
+              guesses: r.guesses.map((g) => {
+                const t = teamById(g.teamId);
+                return { lat: g.lat, lng: g.lng, km: g.km, color: t ? t.color : '#ccc', label: t ? initials(t.name) : '?', penalty: !!g.penalty };
+              }),
+            }));
+            if (map.invalidateSize) map.invalidateSize();
+            recap = renderRecap(map, { rounds, onSelect: (pos) => setSelected(history[pos] ? history[pos].roundIndex : null) });
+            // Chip taps before the map was ready: honour them now.
+            if (selected != null) recap.select(history.findIndex((r) => r.roundIndex === selected));
+          } catch (e) {
+            console.error('[player] recap map failed', e);
+          }
+        });
+      },
+      destroy() {
+        destroyed = true;
+        if (recap) { try { recap.destroy(); } catch (e) {} recap = null; }
+        if (map) { try { map.remove(); } catch (e) {} map = null; }
+      },
       el: h(
         'div.stack.lg',
         h('span.label', 'Final'),
@@ -942,7 +1094,7 @@ export function mountPlayer(root, rawCode) {
             )
           : h('div.h2', winnerTeam ? `${winnerTeam.name} won` : 'That’s a wrap'),
         h('table.board', h('thead', h('tr', h('th', '#'), h('th', 'Team'), h('th.num', 'Rds'), h('th.num', 'Total km'))), h('tbody', rows)),
-        h('div.label.center', 'Look up. The TV has the victory lap.'),
+        recapSection,
       ),
     };
   }

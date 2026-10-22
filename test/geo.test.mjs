@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { haversineKm, greatCirclePoints, formatKm, PENALTY_KM } from '../js/geo.js';
+import { haversineKm, greatCirclePoints, formatKm, fitLngs, PENALTY_KM } from '../js/geo.js';
 
 const LONDON = { lat: 51.5074, lng: -0.1278 };
 const PARIS = { lat: 48.8566, lng: 2.3522 };
@@ -90,6 +90,43 @@ describe('formatKm', () => {
 
   test('penalty-sized numbers use a thousands separator', () => {
     assert.equal(formatKm(PENALTY_KM), '20,000');
+  });
+});
+
+describe('fitLngs', () => {
+  const SYDNEY = { lat: -33.8568, lng: 151.2153 };
+  const span = (pts) => Math.max(...pts.map((p) => p.lng)) - Math.min(...pts.map((p) => p.lng));
+
+  test('Vancouver, Tokyo and Sydney end up on one side of the Pacific (span < 180)', () => {
+    const out = fitLngs([VANCOUVER, TOKYO, SYDNEY]);
+    assert.equal(out.length, 3);
+    assert.ok(span(out) < 180, `span ${span(out)}`);
+    assert.ok(span([VANCOUVER, TOKYO, SYDNEY]) > 180);
+  });
+
+  test('London and Paris come back unchanged', () => {
+    assert.deepEqual(fitLngs([LONDON, PARIS]), [LONDON, PARIS]);
+  });
+
+  test('a single point is unchanged, the empty array gives []', () => {
+    assert.deepEqual(fitLngs([TOKYO]), [TOKYO]);
+    assert.deepEqual(fitLngs([]), []);
+  });
+
+  test('order and lat are kept, and every lng is congruent to its input mod 360', () => {
+    const input = [VANCOUVER, TOKYO, SYDNEY, LONDON];
+    const out = fitLngs(input);
+    assert.equal(out.length, input.length);
+    out.forEach((p, i) => {
+      assert.equal(p.lat, input[i].lat);
+      assert.ok(sameLng(p.lng, input[i].lng), `${p.lng} vs ${input[i].lng}`);
+    });
+  });
+
+  test('does not mutate the input', () => {
+    const input = [{ ...VANCOUVER }, { ...TOKYO }];
+    fitLngs(input);
+    assert.equal(input[1].lng, TOKYO.lng);
   });
 });
 

@@ -156,6 +156,44 @@ async function pinOnMap(page, fx, fy) {
   await page.mouse.click(box.x + box.width * fx, box.y + box.height * fy);
 }
 
+
+// final-screen map helpers ----------------------------------------------------------------
+// Waits for the numbered pins, lets the fit/tiles settle, then reads every pin's box against its own map container.
+async function pinsGeometry(page, { want = 3, settleMs = 700 } = {}) {
+  await page.waitForFunction((n) => document.querySelectorAll('.pin-round').length >= n, want, { timeout: 20000 });
+  await settle(page, settleMs);
+  return page.evaluate(() => {
+    const pins = [...document.querySelectorAll('.pin-round')];
+    const rows = pins.map((p) => {
+      const c = p.closest('.leaflet-container').getBoundingClientRect();
+      const r = p.getBoundingClientRect();
+      return { n: p.textContent.trim(), l: r.left - c.left, t: r.top - c.top, rt: c.right - r.right, b: c.bottom - r.bottom, w: r.width, h: r.height, cw: c.width, ch: c.height, x0: r.left, x1: r.right };
+    });
+    const x0 = Math.min(...rows.map((r) => r.x0)), x1 = Math.max(...rows.map((r) => r.x1));
+    return { rows, extent: rows.length ? x1 - x0 : 0, cw: rows[0]?.cw || 0, ch: rows[0]?.ch || 0 };
+  });
+}
+function checkFit(label, g, minShare = 0.25) {
+  const clipped = g.rows.filter((r) => r.w <= 0 || r.h <= 0 || r.l < -0.5 || r.t < -0.5 || r.rt < -0.5 || r.b < -0.5);
+  check(`${label}: every .pin-round lies fully inside its map container`, g.rows.length > 0 && clipped.length === 0,
+    clipped.length ? `clipped ${clipped.map((r) => `#${r.n} l${r.l.toFixed(0)} t${r.t.toFixed(0)} r${r.rt.toFixed(0)} b${r.b.toFixed(0)}`).join(', ')} in ${g.cw.toFixed(0)}x${g.ch.toFixed(0)}` : `${g.rows.length} pins in ${g.cw.toFixed(0)}x${g.ch.toFixed(0)}`);
+  check(`${label}: fitted zoom is not absurdly far out (pins span >= ${minShare * 100}% of map width)`, g.cw > 0 && g.extent >= minShare * g.cw,
+    `${g.extent.toFixed(0)} / ${g.cw.toFixed(0)} px = ${(g.extent / (g.cw || 1) * 100).toFixed(0)}%`);
+}
+const chipBtn = (page, label) => page.locator('.recap-chips button').filter({ hasText: new RegExp(`^${label}$`) });
+const cardImgLoaded = (page, n, timeout = 8000) => page.waitForFunction((k) => {
+  const i = document.querySelector('.recap-card img');
+  return !!i && i.alt === `Round ${k} photo` && i.complete && i.naturalWidth > 0;
+}, n, { timeout }).then(() => true, () => false);
+const cardKmRows = (page) => page.$$eval('.recap-card table.board tbody tr', (trs) => trs.map((tr) => [...tr.children].map((c) => (c.querySelector('.h2') || c).textContent.trim())));
+async function scrollToMap(page) {
+  await page.evaluate(() => {
+    const el = document.querySelector('.recap-chips')?.parentElement?.closest('section, .recap') || document.querySelector('.recap-map');
+    (el || document.body).scrollIntoView({ block: 'start' });
+  });
+  await settle(page, 300);
+}
+
 // ================================================================================== the game
 const NAMES = ['Ana', 'Ben', 'Cat', 'Dev'];
 const TEAMS = ['MOOSE', 'LOONS', 'BEAVERS'];
@@ -478,7 +516,7 @@ try {
 
   // ---------------------------------------------------------------- final
   await host.getByText(/WIN\./).waitFor({ timeout: 20000 });
-  for (const n of NAMES) await ph[n].getByText(/Look up\. The TV has the victory lap/i).waitFor();
+  for (const n of NAMES) await ph[n].getByText(/Tap a pin to replay a round/i).waitFor();
   check('final screen on host and all four phones', true);
   await host.waitForTimeout(800);
   await shoot(host, 'host-final');
@@ -513,6 +551,148 @@ try {
   const tgt = Object.fromEntries(g.history.map((h) => [h.uploaderName, h.target]));
   check('targets: Ana = Vancouver (EXIF), Cat = Tokyo (EXIF), Ben = his manual pin',
     Math.abs(tgt.Ana.lat - 49.2827) < 0.01 && Math.abs(tgt.Cat.lat - 35.6586) < 0.01 && Math.abs(tgt.Ben.lat - 49.2827) > 1 && Math.abs(tgt.Ben.lat - 35.6586) > 1, JSON.stringify(tgt.Ben));
+
+  // ---------------------------------------------------------------- final: the interactive explore map
+  log('final explore map');
+  const tvFit = await pinsGeometry(host);
+  check('TV final: exactly 3 .pin-round markers', (await host.locator('.pin-round').count()) === 3);
+  checkFit('TV final', tvFit);
+  for (const n of NAMES) {
+    await ph[n].waitForFunction(() => document.querySelectorAll('.pin-round').length >= 1, null, { timeout: 20000 }).catch(() => {});
+  }
+  const phoneFit = {};
+  for (const n of NAMES) {
+    check(`${n}'s phone final: exactly 3 .pin-round markers`, (await ph[n].locator('.pin-round').count()) === 3, String(await ph[n].locator('.pin-round').count()));
+    phoneFit[n] = await pinsGeometry(ph[n]);
+    checkFit(`${n}'s phone final`, phoneFit[n]);
+  }
+  check('TV final: map has a real height', tvFit.ch >= 280, `${tvFit.ch.toFixed(0)}px`);
+  check('phones final: map has a real height', Object.values(phoneFit).every((g) => g.ch >= 280), Object.values(phoneFit).map((g) => g.ch.toFixed(0)).join(','));
+
+  // screenshots: map section, light + dark
+  await scrollToMap(host);
+  await shoot(host, 'host-final-map', { extra: 600 });
+  await scrollToMap(ph.Cat);
+  await shoot(ph.Cat, 'phone-final-map', { extra: 600, scrollCheck: true });
+
+  // --- TV replay: chip R1
+  const r1 = rounds[0];
+  await chipBtn(host, 'R1').click();
+  await host.waitForFunction(() => document.querySelectorAll('path.dim-line').length > 0);
+  await host.waitForTimeout(1800);
+  const r1Want = Object.entries(r1.rows).filter(([, v]) => !v.penalty);
+  check('TV replay R1: .dim-line paths appear (one per pinned team)', (await host.locator('path.dim-line').count()) === r1Want.length, `${await host.locator('path.dim-line').count()} vs ${r1Want.length}`);
+  check('TV replay R1: km labels on the map', (await host.locator('.dim-label').count()) === r1Want.length);
+  check('TV replay R1: R1 chip pressed, SHOW ALL not', (await chipBtn(host, 'R1').getAttribute('aria-pressed')) === 'true' && (await chipBtn(host, 'SHOW ALL').getAttribute('aria-pressed')) === 'false');
+  const cardTxt = await host.locator('.recap-card').innerText();
+  check('TV replay R1: card shows "Photo by"', /Photo by/i.test(cardTxt), cardTxt.slice(0, 80).replace(/\s+/g, ' '));
+  const tvRows = await cardKmRows(host);
+  const tvMap = Object.fromEntries(tvRows.map((c) => [c[0], kmNum(c[2])]));
+  const wantTeams = Object.keys(r1.rows);
+  check('TV replay R1: card km table has the same teams as the R1 reveal', wantTeams.length === tvRows.length && wantTeams.every((t) => t in tvMap), JSON.stringify(tvRows));
+  check('TV replay R1: card km values equal the R1 reveal values', wantTeams.every((t) => Math.abs((tvMap[t] ?? NaN) - r1.rows[t].km) < 0.11), JSON.stringify(tvMap) + ' vs ' + JSON.stringify(Object.fromEntries(wantTeams.map((t) => [t, r1.rows[t].km]))));
+  check('TV replay R1: card photo loads', await cardImgLoaded(host, 1));
+  await host.waitForTimeout(400);
+  await scrollToMap(host);
+  await host.screenshot({ path: path.join(SHOTS, 'host-final-map-selected.png') });
+
+  // keyboard: ArrowRight -> R2, Escape -> all
+  await host.keyboard.press('ArrowRight');
+  await host.waitForTimeout(600);
+  check('TV ArrowRight: R2 selected', (await chipBtn(host, 'R2').getAttribute('aria-pressed')) === 'true' && (await chipBtn(host, 'R1').getAttribute('aria-pressed')) === 'false');
+  check('TV ArrowRight: card shows round 2', /Round\s*2\s*\/\s*3/i.test(await host.locator('.recap-card .label').first().innerText()));
+  check('TV ArrowRight: dim lines for R2', (await host.locator('path.dim-line').count()) === Object.values(rounds[1].rows).filter((v) => !v.penalty).length);
+  await host.keyboard.press('ArrowLeft');
+  await host.waitForTimeout(400);
+  check('TV ArrowLeft: back to R1', (await chipBtn(host, 'R1').getAttribute('aria-pressed')) === 'true');
+  await host.keyboard.press('Escape');
+  await host.waitForTimeout(600);
+  check('TV Escape: no .dim-line, SHOW ALL pressed, 3 pins still shown',
+    (await host.locator('path.dim-line').count()) === 0 && (await chipBtn(host, 'SHOW ALL').getAttribute('aria-pressed')) === 'true' && (await host.locator('.pin-round').count()) === 3 && (await host.locator('.pin-round.active').count()) === 0);
+  checkFit('TV after Escape', await pinsGeometry(host));
+
+  // clicking a pin on the TV also replays
+  await host.locator('.pin-round', { hasText: /^3$/ }).click();
+  await host.waitForFunction(() => document.querySelectorAll('path.dim-line').length > 0);
+  check('TV pin click: R3 selected', (await chipBtn(host, 'R3').getAttribute('aria-pressed')) === 'true');
+  await chipBtn(host, 'SHOW ALL').click();
+  await host.waitForTimeout(500);
+  check('TV SHOW ALL: no .dim-line', (await host.locator('path.dim-line').count()) === 0);
+  checkFit('TV after SHOW ALL', await pinsGeometry(host));
+
+  // --- phone: tap a pin, tap ALL
+  const A = ph.Ana;
+  await A.locator('.pin-round', { hasText: /^2$/ }).scrollIntoViewIfNeeded();
+  await A.locator('.pin-round', { hasText: /^2$/ }).tap();
+  await A.waitForFunction(() => /Round 2 of 3/.test(document.querySelector('.recap-card')?.textContent || ''));
+  check('phone pin tap: card updates to round 2', true);
+  check('phone pin tap: card photo loaded (naturalWidth > 0)', await cardImgLoaded(A, 2));
+  const aRows = await cardKmRows(A);
+  check('phone pin tap: km rows present and match the TV reveal', aRows.length === Object.keys(rounds[1].rows).length
+    && aRows.every((c) => { const rr = Object.entries(rounds[1].rows).find(([t]) => c[0].includes(t)); return rr && (rr[1].penalty ? /no pin/i.test(c[1]) : Math.abs(kmNum(c[1]) - rr[1].km) < 0.11); }), JSON.stringify(aRows));
+  check('phone pin tap: chip R2 pressed', (await chipBtn(A, 'R2').getAttribute('aria-pressed')) === 'true');
+  check('phone pin tap: dashed lines drawn', (await A.locator('path.dim-line').count()) > 0 || Object.values(rounds[1].rows).every((v) => v.penalty));
+  await A.waitForTimeout(1600);
+  // the card is reachable by scrolling, and the page scrolls vertically past the map
+  const reach = await A.evaluate(() => {
+    const se = document.scrollingElement, card = document.querySelector('.recap-card');
+    card.scrollIntoView({ block: 'center' });
+    const r = card.getBoundingClientRect();
+    return { sh: se.scrollHeight, ih: innerHeight, inView: r.top < innerHeight && r.bottom > 0, sw: se.scrollWidth, iw: innerWidth };
+  });
+  check('phone final: page scrolls vertically past the map', reach.sh > reach.ih, `${reach.sh} > ${reach.ih}`);
+  check('phone final: selected card is reachable (scrollIntoView)', reach.inView);
+  check('phone final: no horizontal page scroll (scrollWidth <= innerWidth)', reach.sw <= reach.iw, `${reach.sw} / ${reach.iw}`);
+  await scrollToMap(ph.Cat);
+  await chipBtn(ph.Cat, 'R1').tap();
+  await ph.Cat.waitForTimeout(2200);
+  await ph.Cat.evaluate(() => document.querySelector('.recap-chips').scrollIntoView({ block: 'start' }));
+  await ph.Cat.waitForTimeout(300);
+  await ph.Cat.screenshot({ path: path.join(SHOTS, 'phone-final-map-selected.png') });
+  await ph.Cat.screenshot({ path: path.join(SHOTS, 'phone-final-map-selected-full.png'), fullPage: true });
+  await A.evaluate(() => document.querySelector('.recap-chips').scrollIntoView({ block: 'start' }));
+  await chipBtn(A, 'ALL').tap();
+  await A.waitForTimeout(500);
+  check('phone ALL: no dashed lines, no active pin', (await A.locator('path.dim-line').count()) === 0 && (await A.locator('.pin-round.active').count()) === 0 && (await chipBtn(A, 'ALL').getAttribute('aria-pressed')) === 'true');
+  checkFit('Ana\'s phone after ALL', await pinsGeometry(A));
+
+  // --- every phone has all 3 recap photos
+  for (const n of NAMES) {
+    let got = 0;
+    for (let k = 1; k <= 3; k++) {
+      await chipBtn(ph[n], `R${k}`).tap();
+      if (await cardImgLoaded(ph[n], k, 8000)) got++;
+    }
+    check(`${n}'s phone received all 3 recap photos (card <img> naturalWidth > 0)`, got === 3, `${got}/3`);
+    await chipBtn(ph[n], 'ALL').tap();
+  }
+
+  // --- reconnect during FINAL
+  await ph.Dev.reload();
+  await ph.Dev.waitForFunction(() => document.querySelectorAll('.pin-round').length === 3, null, { timeout: 30000 });
+  check('Dev reload during FINAL: rejoins and shows the recap map (3 pins)', true);
+  check('Dev reload during FINAL: still on the final screen, named Dev', /Dev/.test(await ph.Dev.locator('header.masthead').textContent()));
+  checkFit('Dev after reload', await pinsGeometry(ph.Dev));
+  let devGot = 0;
+  for (let k = 1; k <= 3; k++) {
+    await chipBtn(ph.Dev, `R${k}`).tap();
+    if (await cardImgLoaded(ph.Dev, k, 10000)) devGot++;
+  }
+  check('Dev reload during FINAL: all 3 recap photos arrive again', devGot === 3, `${devGot}/3`);
+  await chipBtn(ph.Dev, 'ALL').tap();
+  await online4(host);
+  check('host shows 4/4 online after the FINAL reload', true);
+
+  for (const n of NAMES) await noHScroll(ph[n], `${n}'s phone in FINAL (with map)`);
+
+  // --- PLAY AGAIN: maps go away, phones back to the lobby
+  await host.getByRole('button', { name: /^play again$/i }).click();
+  await host.waitForFunction(() => document.querySelectorAll('.pin-round').length === 0 && !document.querySelector('.recap-card'), null, { timeout: 15000 });
+  check('PLAY AGAIN: TV recap map removed (no .pin-round)', true);
+  for (const n of NAMES) await ph[n].waitForFunction(() => /Your team/.test(document.body.textContent) && !/Tap a pin to replay a round/.test(document.body.textContent), null, { timeout: 20000 });
+  check('PLAY AGAIN: all four phones are back in the lobby', true);
+  check('PLAY AGAIN: no .pin-round / recap left on any phone', (await Promise.all(NAMES.map((n) => ph[n].locator('.pin-round, .recap-card, .recap-chips').count()))).every((c) => c === 0));
+  await host.waitForTimeout(800);
 } catch (e) {
   check('script ran to completion', false, e.stack || String(e));
   try { await host.screenshot({ path: path.join(SHOTS, '_failure-host.png') }); } catch (_) {}

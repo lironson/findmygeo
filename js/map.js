@@ -1,7 +1,7 @@
 // Leaflet helpers. The global `L` is touched only inside functions (never at import time).
 
 import { currentTheme } from './theme.js';
-import { greatCirclePoints, formatKm } from './geo.js';
+import { greatCirclePoints, formatKm, fitLngs } from './geo.js';
 import { reducedMotion } from './dom.js';
 
 // Esri Gray Canvas: keyless, quiet, and it has a matching dark variant. Base + labels on top.
@@ -160,13 +160,16 @@ const LINE_MS = 750;     // draw-in time per line
 const LINE_STAGGER = 130;  // between lines
 const SLAP_STAGGER = 100;  // between stickers
 
+function clearReveal(map) {
+  if (!map._fmgReveal) return;
+  map._fmgReveal._cancelled = true;
+  map._fmgReveal.clearLayers();
+  map.removeLayer(map._fmgReveal);
+  map._fmgReveal = null;
+}
+
 export function renderReveal(map, { target, guesses = [], animate = true } = {}) {
-  // Clear the previous reveal on this map.
-  if (map._fmgReveal) {
-    map._fmgReveal._cancelled = true;
-    map._fmgReveal.clearLayers();
-    map.removeLayer(map._fmgReveal);
-  }
+  clearReveal(map);
   const group = L.layerGroup().addTo(map);
   map._fmgReveal = group;
   const motion = animate && !reducedMotion();
@@ -244,4 +247,74 @@ function animateLines(group, lines) {
     if (pending) requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
+}
+
+// ---------------------------------------------------------------------------
+// Recap: every round's target as a numbered pin; select one to replay its reveal.
+
+// Numbered square survey tag. Active pins sit a little above the point so the target x stays visible.
+export function roundPinIcon(n, { active = false, dim = false, size = 26 } = {}) {
+  return L.divIcon({
+    className: `pin-round${active ? ' active' : ''}${dim ? ' dim' : ''}`,
+    html: `<span class="face">${esc(n)}</span>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, active ? Math.round(size * 1.6) : size / 2],
+  });
+}
+
+const PIN_Z = 2000; // above every reveal marker
+const DIM_Z = 300;  // below reveal labels (400), stickers (500+) and the target x (900)
+
+// rounds: [{ index, target:{lat,lng}, guesses:[{lat,lng,km,color,label,penalty}] }]
+// Returns { showAll(), select(i), current(), destroy() }; i is the position in `rounds`.
+export function renderRecap(map, { rounds = [], onSelect } = {}) {
+  const k = scaleOf(map);
+  const size = Math.round(26 * k);
+  const group = L.layerGroup().addTo(map);
+  const fitted = fitLngs(rounds.map((r) => r.target)); // pins sit together across the Pacific
+  let cur = null;
+
+  const paint = (m, i) => {
+    const dim = cur != null && i !== cur;
+    m.setIcon(roundPinIcon(rounds[i].index + 1, { active: i === cur, dim, size }));
+    m.setZIndexOffset(dim ? DIM_Z : PIN_Z); // dimmed pins duck under the replayed round's stickers
+    // The active pin stands at the target's own lng, where renderReveal draws its x.
+    m.setLatLng([fitted[i].lat, i === cur ? rounds[i].target.lng : fitted[i].lng]);
+  };
+  const markers = rounds.map((r, i) => {
+    const m = L.marker([fitted[i].lat, fitted[i].lng], {
+      icon: roundPinIcon(r.index + 1, { size }), keyboard: true, riseOnHover: true,
+      zIndexOffset: PIN_Z, title: `Round ${r.index + 1}`, alt: `Round ${r.index + 1}`,
+    }).addTo(group);
+    m.on('click', () => api.select(i));
+    return m;
+  });
+
+  const api = {
+    showAll() {
+      clearReveal(map);
+      cur = null;
+      markers.forEach(paint);
+      if (!rounds.length) return;
+      if (rounds.length === 1) { map.setView([fitted[0].lat, fitted[0].lng], 5, { animate: false }); return; }
+      const pad = Math.round(48 * k);
+      map.fitBounds(L.latLngBounds(fitted.map((p) => [p.lat, p.lng])), { padding: [pad, pad], maxZoom: 10, animate: false });
+    },
+    select(i) {
+      const r = rounds[i];
+      if (!r) return;
+      cur = i;
+      renderReveal(map, { target: r.target, guesses: r.guesses, animate: true });
+      markers.forEach(paint);
+      onSelect?.(i);
+    },
+    current: () => cur,
+    destroy() {
+      clearReveal(map);
+      group.clearLayers();
+      map.removeLayer(group);
+    },
+  };
+  api.showAll();
+  return api;
 }

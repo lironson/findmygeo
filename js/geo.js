@@ -69,3 +69,17 @@ export function formatKm(km) {
   if (r < 100) return r.toFixed(1);
   return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
+
+// Shift each longitude by a multiple of 360 so the points span as little longitude as possible
+// (Vancouver + Tokyo + Sydney sit together across the Pacific instead of spanning the globe).
+// Same length and order as the input; lat untouched.
+export function fitLngs(points) {
+  let best = null, bestSpan = Infinity;
+  for (const a of points) {
+    const out = points.map((p) => ({ ...p, lng: p.lng + 360 * Math.round((a.lng - p.lng) / 360) }));
+    const lngs = out.map((p) => p.lng);
+    const span = Math.max(...lngs) - Math.min(...lngs);
+    if (span < bestSpan - 1e-9) { best = out; bestSpan = span; }
+  }
+  return best || [];
+}
